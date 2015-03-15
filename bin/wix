@@ -58,13 +58,12 @@ command :init do |c|
     end
     fail "User cannot be none." if options['user'] == nil
     fail "Name cannot be none." if options['name'] == nil
-    create(path, options)
+    create_wix(path, options)
     puts "Created sub local index at `#{$wix_root}'."
   end
 end
 
 
-=begin
 desc "Add entry to the index"
 arg_name 'path', [:optional, :multiple]
 command :add do |c|
@@ -96,9 +95,12 @@ command :push do |c|
 end
 
 desc "Update server local sub index"
-command :push do |c|
+command :status do |c|
+  c.action do |global_options, options, args|
+    path = Dir.pwd
+    init_wix!(path)
+  end
 end
-=end
 
 
 pre do |global,command,options,args|

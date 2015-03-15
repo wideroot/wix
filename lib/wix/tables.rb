@@ -1,3 +1,6 @@
+def init_tables
+  puts "init tables..."
+
 $db.create_table?  :configs do
   primary_key :id
   String      :name         , null: false   , text: false
@@ -36,4 +39,7 @@ $db.create_table?  :objects do
   Time        :mtime        , null: false
   Integer     :size
   String      :sha2_512     , null: false   , text: false , fixed: true , size: 128
+end
+
+true
 end

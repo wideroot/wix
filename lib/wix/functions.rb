@@ -1,12 +1,12 @@
-
-def create path, options
+def create_wix path, options
   wix_file = File.join(path, WIX_FILENAME)
   FileUtils.rm_f(wix_file)
   $db = Sequel.connect("sqlite://#{wix_file}")
-  require_relative './tables.rb'
+  puts 'wa'
+  init_tables
+  puts 'wa'
   time = Sequel.datetime_class.now
-  $db[:configs].insert(
-    id:           0,
+  puts $db[:configs].insert(
     name:         options['name'],
     username:     options['user'],
     anon:         options['anon'],
@@ -21,27 +21,35 @@ def create path, options
     updated_at:   time,
     removed_at:   nil,
   )
-  $wix_root = path
+  $wix_root = wix_file
+end
+
+
+def init_wix! path
+  if !init_wix(path)
+    fail "Not a sub local index (or any of the parent directories)"
+  end
 end
 
 def init_wix path
   Pathname.new(path).ascend do |path|
-    begin
-      wix_file = File.join(path, WIX_FILENAME)
-      $db = Sequel.connect("sqlite://#{wix_file}")
-      next unless $db
-      if $verbose_level > 0
-        $db.logger = Logger.new($stderr)
-        $db.sql_log_level = :debug
-      end
-      require_relative './models.rb'
-      $wix_root = path
-      return true
-    rescue => ex
+    wix_file = File.join(path, WIX_FILENAME)
+    next unless File.file?(wix_file)
+    $db = Sequel.connect("sqlite://#{wix_file}")
+    if $verbose_level > 0
+      $db.logger = Logger.new($stderr)
+      $db.sql_log_level = :debug
     end
+    require_relative './models.rb'
+    $wix_root = wix_file
+    if !$db.table_exists?(:configs)
+      fail "Invalid db `#{wix_file}': configs table does not exist"
+    end
+    return true
   end
   false
 end
+
 
 def add path, options
 end

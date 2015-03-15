@@ -10,7 +10,7 @@ class File < Sequel::Model
 end
 
 
-$index = Index.last
-fail "Config not found" unless $index
+$config = Wix::Config.last
+fail "Config not found" unless $config
 
 end
