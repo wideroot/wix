@@ -1,2 +1,2 @@
 # wix
-Global File Index client
+windex client
