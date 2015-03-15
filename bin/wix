@@ -52,13 +52,13 @@ command :init do |c|
   c.switch %i(message), negatable: true
 
   c.action do |global_options, options, args|
-    path = Dir.pwd
-    if init_wix(path)
+    pwd = Dir.pwd
+    if init_wix(pwd)
       fail "A local sub index cannot be placed inside another local sub index `#{$wix_root}'."
     end
     fail "User cannot be none." if options['user'] == nil
     fail "Name cannot be none." if options['name'] == nil
-    create_wix(path, options)
+    create_wix(pwd, options)
     puts "Created sub local index at `#{$wix_root}'."
   end
 end
@@ -95,10 +95,40 @@ command :push do |c|
 end
 
 desc "Update server local sub index"
+arg_name 'path', [:optional, :multiple]
 command :status do |c|
   c.action do |global_options, options, args|
-    path = Dir.pwd
-    init_wix!(path)
+    pwd = Dir.pwd
+    init_wix!(pwd)
+    args << $wix_root if args.empty?
+    base = Pathname.new($wix_root)
+    commit = last_commit
+    args.each do |path|
+      p = Pathname.new(File.absolute_path(path))
+      if p.relative_path_from(base).to_s.start_with?('..')
+        fail "`#{path}' is outside local sub index `#{$wix_root}'"
+      end
+    end
+    added = []
+    untracked = []
+    args.each do |path|
+      a, m, u = status(path, base, last_commit)
+      added += a
+      modified += m
+      untracked += u
+    end
+    added.uniq!
+    modified.uniq!
+    untracked.uniq!
+    puts "Files to be committed:"
+    puts ""
+    puts ""
+    puts "Files mpt staged for commit:"
+    puts ""
+    puts ""
+    puts "Untracked files:"
+    puts ""
+    puts ""
   end
 end
 
