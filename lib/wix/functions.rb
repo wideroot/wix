@@ -6,9 +6,7 @@ def create_wix path, options
   wix_file = File.join(path, WIX_FILENAME)
   FileUtils.rm_f(wix_file)
   $db = Sequel.connect("sqlite://#{wix_file}")
-  puts 'wa'
   init_tables
-  puts 'wa'
   time = Sequel.datetime_class.now
   $db.transaction do
     config_id = $db[:configs].insert(
@@ -26,7 +24,8 @@ def create_wix path, options
       updated_at:   time,
       removed_at:   nil,
     )
-    $db[:commit].insert(config_id: config_id)
+    # insert the commit we will use as staged commit
+    $db[:commits].insert(config_id: config_id)
   end
   set_wix_root(path)
 end
@@ -64,32 +63,43 @@ end
 def rm path
 end
 
-def status pathname, basename, commit
-  untracked = []
-  added = []
-  Dir["#{pathname.to_s}/**/*"].select { |path| File.file?(path) }.each do |file|
+def status from, base, stage, staged, not_staged, untracked
+  staged_objects = Wix::Object.select(:path, :mtime, :ctime, :size, :added, :removed)
+      .where(commit_id: stage.id).order_by(:path).all
+
+  Dir["#{from.to_s}/**/*"].select { |path| File.file?(path) }.each do |file|
     path = Pathname.new(File.absolute_path(file)).relative_path_from(base).to_s
     file_stat = File.stat(file)
-    entry = Wix::Object.select(:mtime, :ctime, :size, :added)
-      .where(path: path, commit_id: commit.id)
-    if entry
-      if  stat.mtime == entry.mtime &&
-          stat.ctime == entry.ctime &&
-          stat.size == entry.size
+
+    object = staged_objects.bsearch { |object| object.path >= path }
+    if object && object.path == path
+      if  stat.mtime == object.mtime &&
+          stat.ctime == object.ctime &&
+          stat.size == object.size
         # tracked (and not modified) or added
-        added << path if entry.added
+        if object.added
+          staged[path] = 'a'
+        elsif object.removed
+          staged[path] = 'r'
+        end
       else
-        # maybe modified
-        untracked << path
+        # modified
+        # (it could be that actually it is not since we do not check hashes)
+        not_staged[path] = 'm'
       end
+      object.mtime = nil  # we mark this object as seen
     else
       # untracked
-      untracked << path
+      untracked[path] = true
     end
   end
-  [added, untracked]
+
+  # all non see objects are deleted not staged for commit
+  staged_objects.select { |object| !object.mtime }.each do |object|
+    not_staged[object.path] = 'r'
+  end
 end
 
-def last_commit
+def stage_commit
   Wix::Commit.last
 end

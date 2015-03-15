@@ -5,12 +5,14 @@ class Config < Sequel::Model
   set_primary_key :id
 end
 
-class File < Sequel::Model
+class Commit < Sequel::Model
+  set_primary_key :id
+  many_to_one :config
+end
+
+class Object < Sequel::Model
   set_primary_key :id
 end
 
-
-$config = Wix::Config.last
-fail "Config not found" unless $config
 
 end

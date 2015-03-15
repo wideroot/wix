@@ -1,6 +1,7 @@
 #!/usr/bin/env ruby
 require 'gli'
 require 'fileutils'
+require 'logger'
 require 'wix'
 
 include GLI::App
@@ -102,33 +103,58 @@ command :status do |c|
     init_wix!(pwd)
     args << $wix_root if args.empty?
     base = Pathname.new($wix_root)
-    commit = last_commit
+    stage = stage_commit
     args.each do |path|
       p = Pathname.new(File.absolute_path(path))
       if p.relative_path_from(base).to_s.start_with?('..')
         fail "`#{path}' is outside local sub index `#{$wix_root}'"
       end
     end
-    added = []
-    untracked = []
+    staged = {}
+    not_staged = {}
+    untracked = {}
     args.each do |path|
-      a, m, u = status(path, base, last_commit)
-      added += a
-      modified += m
-      untracked += u
+      status(path, base, stage, staged, not_staged, untracked)
     end
-    added.uniq!
-    modified.uniq!
-    untracked.uniq!
     puts "Files to be committed:"
-    puts ""
-    puts ""
-    puts "Files mpt staged for commit:"
-    puts ""
-    puts ""
+    if !staged.empty?
+      puts ""
+      staged.each do |path, state|
+        state_msg = if state == 'r'
+          'deleted: '
+        elsif state =='a'
+          'added:   '
+        else
+          fail "Invalid state `#{state}' for staged file."
+        end
+        puts "    #{state_msg} #{path}"
+      end
+      puts ""
+    end
+    puts "Files not staged for commit:"
+    if !not_staged.empty?
+      puts ""
+      not_staged.each do |path, state|
+        state_msg = if state == 'r'
+          'deleted: '
+        elsif state =='m'
+          'modified:'
+        else
+          fail "Invalid state `#{state}' for staged file."
+        end
+        puts "    #{state_msg} #{path}"
+      end
+      puts ""
+    end
     puts "Untracked files:"
-    puts ""
-    puts ""
+    if !untracked.empty?
+      puts ""
+                #'modified:'
+      untracked.each do |path, state|
+        puts "    #{path}"
+      end
+      puts ""
+    end
   end
 end
 
