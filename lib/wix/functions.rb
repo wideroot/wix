@@ -1,10 +1,11 @@
 
 def create path, options
   wix_file = File.join(path, WIX_FILENAME)
-  File.rm_f(wix_file)
-  Sequel.connect("sqlite://#{wix_file}")
-  require 'tables.rb'
-  Wix::Config.create(
+  FileUtils.rm_f(wix_file)
+  $db = Sequel.connect("sqlite://#{wix_file}")
+  require_relative './tables.rb'
+  time = Sequel.datetime_class.now
+  $db[:configs].insert(
     id:           0,
     name:         options['name'],
     username:     options['user'],
@@ -16,7 +17,9 @@ def create path, options
     commit_time:  options['commit-time'],
     message:      options['message'],
     file_time:    options['file-time'],
-    created_at:   Sequel.datetime_class.now
+    created_at:   time,
+    updated_at:   time,
+    removed_at:   nil,
   )
   $wix_root = path
 end
@@ -31,7 +34,7 @@ def init_wix path
         $db.logger = Logger.new($stderr)
         $db.sql_log_level = :debug
       end
-      require 'models.rb'
+      require_relative './models.rb'
       $wix_root = path
       return true
     rescue => ex

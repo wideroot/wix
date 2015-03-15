@@ -1,5 +1,6 @@
 #!/usr/bin/env ruby
 require 'gli'
+require 'fileutils'
 require 'wix'
 
 include GLI::App
@@ -48,19 +49,22 @@ command :init do |c|
   c.switch %i(file-time), negatable: true
   c.desc "Other users will see your commit messages"
   c.default_value true
-  c.switch %i(messages), negatable: true
+  c.switch %i(message), negatable: true
 
   c.action do |global_options, options, args|
-    fail "Invalid number of arguments." unless args.empty?
-    if init_wix
+    path = Dir.pwd
+    if init_wix(path)
       fail "A local sub index cannot be placed inside another local sub index `#{$wix_root}'."
     end
-    create(Dir.pwd, options)
+    fail "User cannot be none." if options['user'] == nil
+    fail "Name cannot be none." if options['name'] == nil
+    create(path, options)
     puts "Created sub local index at `#{$wix_root}'."
   end
 end
 
 
+=begin
 desc "Add entry to the index"
 arg_name 'path', [:optional, :multiple]
 command :add do |c|
@@ -94,6 +98,7 @@ end
 desc "Update server local sub index"
 command :push do |c|
 end
+=end
 
 
 pre do |global,command,options,args|
