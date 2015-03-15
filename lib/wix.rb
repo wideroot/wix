@@ -1,4 +1,4 @@
 require 'wix/version.rb'
-
-# Add requires for other files you add to your project here, so
-# you just need to require this one file in your bin file
+require 'wix/config.rb'
+require 'sequel'
+require 'wix/functions.rb'

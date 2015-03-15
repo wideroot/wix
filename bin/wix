@@ -1,32 +1,103 @@
 #!/usr/bin/env ruby
 require 'gli'
-begin # XXX: Remove this begin/rescue before distributing your app
 require 'wix'
-rescue LoadError
-  STDERR.puts "In development, you need to use `bundle exec bin/wix` to run your app"
-  STDERR.puts "At install-time, RubyGems will make sure lib, etc. are in the load path"
-  STDERR.puts "Feel free to remove this message from bin/wix now"
-  exit 64
-end
 
 include GLI::App
 
-program_desc 'Describe your application here'
+program_desc 'wix client'
 
 version Wix::VERSION
 
 subcommand_option_handling :normal
 arguments :strict
 
-desc 'Describe some switch here'
-switch [:s,:switch]
 
-desc 'Describe some flag here'
-default_value 'the default'
-arg_name 'The name of the argument'
-flag [:f,:flagname]
+desc "Show verbose output"
+default_value false
+switch [:v, :verbose], :negatable => false
+
+
+desc "Create a empty local sub index"
+command :init do |c|
+  c.desc "Name of the index"
+  c.flag [:name]
+  c.default_value nil
+  c.desc "User"
+  c.flag [:user]
+  c.default_value nil
+  c.desc "The index (and files) will not be associate to the user"
+  c.default_value false
+  c.switch %i(anon), negatable: true
+  c.desc "Other users will not see this index (they will see the files, but)"
+  c.default_value false
+  c.switch %i(hidden), negatable: true
+  c.desc "Publish filenames"
+  c.default_value true
+  c.switch %i(filename), negatable: true
+  c.desc "Publish paths"
+  c.default_value true
+  c.switch %i(path), negatable: true
+  c.desc "Publish push time"
+  c.default_value true
+  c.switch %i(push-time), negatable: true
+  c.desc "Publish commit time"
+  c.default_value true
+  c.switch %i(commit-time), negatable: true
+  c.desc "Publish file time (mtime)"
+  c.default_value true
+  c.switch %i(file-time), negatable: true
+  c.desc "Other users will see your commit messages"
+  c.default_value true
+  c.switch %i(messages), negatable: true
+
+  c.action do |global_options, options, args|
+    fail "Invalid number of arguments." unless args.empty?
+    if init_wix
+      fail "A local sub index cannot be placed inside another local sub index `#{$wix_root}'."
+    end
+    create(Dir.pwd, options)
+    puts "Created sub local index at `#{$wix_root}'."
+  end
+end
+
+
+desc "Add entry to the index"
+arg_name 'path', [:optional, :multiple]
+command :add do |c|
+  c.desc "Update the index just where it already has an entry matching <path>."
+  c.default_value false
+  c.switch [:u, :update], negatable: false
+  c.desc "Update the index not only where the working tree has a file matching <path> but also where the index already has an entry."
+  c.default_value false
+  c.switch [:A, :all], negatable: false
+end
+
+desc "Remove entry from the index (not removing the files)"
+arg_name 'path', [:optional, :multiple]
+command :rm do |c|
+  c.desc "Override the up-to-date check."
+  c.default_value false
+  c.switch [:f, :force], negatable: false
+end
+
+desc "Record changes to the index"
+command :commit do |c|
+  c.desc "Use the given <msg> as the commit message."
+  c.default_value nil
+  c.flag [:m, :message]
+end
+
+desc "Show the local sub index status"
+command :push do |c|
+end
+
+desc "Update server local sub index"
+command :push do |c|
+end
+
 
 pre do |global,command,options,args|
+  $verbose_level = global[:verbose] ? 1 : 0
   # Pre logic here
   # Return true to proceed; false to abort and not call the
   # chosen command
