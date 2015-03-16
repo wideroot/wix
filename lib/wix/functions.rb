@@ -13,6 +13,10 @@ def set_wix_root path
   $wix_root = File.absolute_path(path)
 end
 
+def init_empty_commit config_id
+  commit_id = $db[:commits].insert(config_id: config_id)
+  warn "init empty commit r#{commit_id}" if $verbose_level > 0
+end
 def create_wix path, options
   wix_file = File.join(path, WIX_FILENAME)
   FileUtils.rm_f(wix_file)
@@ -36,7 +40,7 @@ def create_wix path, options
       removed_at:   nil,
     )
     # insert the commit we will use as staged commit
-    $db[:commits].insert(config_id: config_id)
+    init_empty_commit(config_id)
   end
   set_wix_root(path)
 end
@@ -75,12 +79,15 @@ def add_not_staged files, stage
     object = o[:object]
     case action
     when 'r'
+      warn "add not staged 'r' object #{object}" if $verbose_level > 0
       rm_object(object)
     when 'm'
+      warn "add not staged 'm' object #{object}" if $verbose_level > 0
       add_file(file, stage)
     else
       fail "Invalid action `#{action}' for staged file."
     end
+    warn "removed last object #{last_object}" if $verbose_level > 0
     rm_object(last_object)
   end
 end
@@ -104,8 +111,10 @@ def add_file(path, stage, removed = false)
   Wix::Object.insert(
     commit_id: stage.id,
     path: path,
-    mtime: stat.mtime,
-    ctime: stat.ctime,
+    mtime_s: stat.mtime.tv_sec,
+    mtime_n: stat.mtime.tv_nsec,
+    ctime_s: stat.ctime.tv_sec,
+    ctime_n: stat.ctime.tv_nsec,
     size: stat.size,
     sha2_512: sha2_512,
     added: true,
@@ -189,7 +198,7 @@ def status from, base, stage, staged, not_staged, untracked
   staged_objects = {}
       # TODO this doesn't work... ??
   Wix::Object
-      .select(:id, :path, :mtime, :ctime, :size, :added, :removed)
+      .select(:id, :path, :mtime_s, :mtime_n, :ctime_s, :ctime_n, :size, :added, :removed)
       .where("commit_id = ? AND path LIKE (? || '%')", stage.id, path_prefix)
       .order_by(:path, Sequel.desc(:id))
       .all
@@ -208,15 +217,16 @@ def status from, base, stage, staged, not_staged, untracked
     warn staged_objects  # TODO warn
   end
 
+  seen = Set.new
   if is_a_file
-    status_object(from, base, staged_objects, staged, not_staged, untracked)
+    status_object(from, base, staged_objects, staged, not_staged, untracked, seen)
   else
-    status_dir(from, base, staged_objects, staged, not_staged, untracked)
+    status_dir(from, base, staged_objects, staged, not_staged, untracked, seen)
   end
   # check when a file has been deleted
   staged_objects.each do |path, objects|
     object = objects[:last_object]
-    if object.mtime != nil
+    if !seen.member? object
       fail "unseen filed marked as not_staged" if not_staged[path]
       not_staged[path] = {action: 'r', object: object, last_object: objects[:objects][-2]}
     end
@@ -224,21 +234,21 @@ def status from, base, stage, staged, not_staged, untracked
 
   if $verbose_level > 0
     warn "= = = = = = = = ="
-    warn "- not staged (modified)"
+    warn "- not staged (removed)"
     not_staged.each do |path, o|
       next if o[:action] != 'r'
       warn "    #{path}"
       warn "      #{o[:action]} #{o[:object] ? o[:object].id : 'nil'}"
     end
+    warn ""
+    warn "============== ]]"
+    warn ""
   end
 
-  warn ""
-  warn "============== ]]"
-  warn ""
   is_a_file
 end
 
-def status_object file, base, staged_objects, staged, not_staged, untracked
+def status_object file, base, staged_objects, staged, not_staged, untracked, seen
   path = Pathname.new(File.absolute_path(file)).relative_path_from(base).to_s
   file_stat = File.stat(file)
   return unless file_stat.file?
@@ -257,8 +267,10 @@ def status_object file, base, staged_objects, staged, not_staged, untracked
     end
     # we could have add/rm a previous version of file
     object = objects[:last_object]
-    if  file_stat.mtime == object.mtime &&
-        file_stat.ctime == object.ctime &&
+    if  file_stat.mtime.to_sec  == object.mtime_s &&
+        file_stat.mtime.to_nsec == object.mtime_n &&
+        file_stat.ctime.to_sec  == object.ctime_s &&
+        file_stat.ctime.to_nsec == object.ctime_n &&
         file_stat.size == object.size
       # path is not a new object
       # do nothing then
@@ -273,7 +285,7 @@ def status_object file, base, staged_objects, staged, not_staged, untracked
         untracked[path] = true
       end
     end
-    object.mtime = nil  # we mark this object as seen
+    seen.add(object)
   else
     # untracked
     untracked[path] = true
@@ -297,15 +309,15 @@ def status_object file, base, staged_objects, staged, not_staged, untracked
     end
     warn "- untracked"
     untracked.each do |path, v|
-      puts "    #{path}"
+      warn "    #{path}"
       warn "!! expected true, got `#{v.inspect}'" unless v == true
     end
   end
 end
 
-def status_dir from, base, staged_objects, staged, not_staged, untracked
+def status_dir from, base, staged_objects, staged, not_staged, untracked, seen
   Dir["#{from}/**/*"].select { |path| File.file?(path) }.each do |file|
-    status_object(file, base, staged_objects, staged, not_staged, untracked)
+    status_object(file, base, staged_objects, staged, not_staged, untracked, seen)
   end
 end
 

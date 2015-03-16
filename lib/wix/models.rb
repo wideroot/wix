@@ -15,6 +15,12 @@ class Object < Sequel::Model
   def unique_id_in_commit
     "#{sha2_512} #{size} #{mtime} #{ctime} #{path}"
   end
+  def mtime
+    Time.at(mtime_s)
+  end
+  def ctime
+    Time.at(ctime_s)
+  end
 end
 
 

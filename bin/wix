@@ -67,7 +67,7 @@ command :init do |c|
 end
 
 
-def arg_command args, add_root_if_empty = false, force_file_to_exist = false
+def arg_command args, add_root_if_empty: false, force_file_to_exist: false
   pwd = Dir.pwd
   init_wix!(pwd)
   args << $wix_root if args.empty? && add_root_if_empty
@@ -103,17 +103,18 @@ command :add do |c|
     if options['all'] && options['update']
       fail "-A and -u are mutually incompatible"
     end
-    if !options['all'] || options['update']
-      options['all'] = true
-    end
 
     base, paths = arg_command(args, force_file_to_exist: true)
     if paths.empty?
-      if options['updated'] || options['all']
-        paths << Pathname.new(File.absolute_path(path))
+      if options['update'] || options['all']
+        paths << Pathname.new(File.absolute_path($wix_root))
       else
         puts "Nothing specified, nothing added."
       end
+    end
+
+    if !(options['all'] || options['update'])
+      options['all'] = true
     end
 
     stage = stage_commit
@@ -243,7 +244,7 @@ command :debug do |c|
         puts "  #{'r' if object.removed}#{'a' if object.added} - #{object.id}"
         if $verbose_level > 0
           puts "      mtime    #{object.mtime}"
-          puts "      ctime    #{object.mtime}"
+          puts "      ctime    #{object.ctime}"
           puts "      size     #{object.size}"
           puts "      sha2_512 #{object.sha2_512}"
         end
