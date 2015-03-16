@@ -1,3 +1,12 @@
+def calculate_sha2_512 file
+  res = nil
+  Open3.popen3("sha512sum -b #{shell_path}") do |in, out, err, t|
+    hash = out.split.first
+    res = hash
+  end
+  return res
+end
+
 def set_wix_root path
   $wix_root = File.absolute_path(path)
 end
@@ -57,25 +66,60 @@ def init_wix path
 end
 
 
-def add_not_staged files
+def add_not_staged files, stage
+  files.each do |file, action|
+    case action
+    when 'r'
+      rm_file(path, stage)
+    when 'm'
+      add_file(path, stage)
+    else
+      fail "Invalid action `#{action}' for staged file."
+    end
+  end
 end
-def add_untracked files
 
+def add_untracked files, stage
+  files.each do |file|
+    add_file(file, stage)
+  end
 end
+
+def rm_file(path, stage)
+  Mix::Object
+    .where(commit_id: stage.id, path: path)
+    .update(added: false, removed: true)
+end
+
+def add_file(path, stage)
+  stat = File.stat(path)
+  sha2_512 = calculate_sha2_512(path)
+  Mix::Object.insert(
+    commit_id: stage.id,
+    path: path,
+    mtime: stat.mtime,
+    ctime: stat.ctime,
+    size: stat.size,
+    sha2_512: sha2_512,
+    added: true,
+    removed: false
+  )
+end
+
 def add from, base, stage, options
   staged = {}
   not_staged = {}
   untracked = {}
-  is_a_file = status(from, base, staged_objects, staged, not_staged, untracked)
+  is_a_file = status(from, base, stage, staged, not_staged, untracked)
 
   if options['no-all']
     not_saged.select! { |path, action| v != 'r' }
   end
   if options['update']
-    add_not_staged(not_staged)
+    add_not_staged(not_staged, stage)
   elsif options['all']
-    add_not_staged(not_staged)
-    add_untracked(untracked)
+    add_not_staged(not_staged, stage)
+    add_untracked(untracked, stage)
   end
 end
 
@@ -129,22 +173,30 @@ def status_file file, base, staged_objects, staged, not_staged, untracked
   path = Pathname.new(File.absolute_path(file)).relative_path_from(base).to_s
   file_stat = File.stat(file)
   return unless file_stat.file?
+  new_object = true
   object = staged_objects.bsearch { |object| object.path >= path }
   if object && object.path == path
-    # not we could have added a previous version of a file...
+    # not we could have add/rm a previous version of file
     if object.added
       staged[path] = 'a'
+    elsif object.removed
+      staged[path] = 'r'
     end
+
     if  stat.mtime == object.mtime &&
         stat.ctime == object.ctime &&
         stat.size == object.size
-      if object.removed
-        staged[path] = 'r'
-      end
+      # path is not a new object
+      new_object = false
     else
-      # modified
-      # (it could be that actually it is not since we do not check hashes)
-      not_staged[path] = 'm'
+      if object.added
+        # if was added then it's modified
+        # (it could be that actually it is not since we do not check hashes)
+        not_staged[path] = 'm'
+      else
+        # otherwise it's untracked
+        untracked[path] = true
+      end
     end
     object.mtime = nil  # we mark this object as seen
   else

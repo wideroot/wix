@@ -65,7 +65,7 @@ command :init do |c|
 end
 
 
-def arg_command args, add_root_if_empty = false, exists = false
+def arg_command args, add_root_if_empty = false, force_file_to_exist = false
   pwd = Dir.pwd
   init_wix!(pwd)
   args << $wix_root if args.empty? && add_root_if_empty
@@ -104,7 +104,8 @@ command :add do |c|
     if !options['all'] || options['update']
       options['all'] = true
     end
-    base, paths = arg_command(args, exist: true)
+
+    base, paths = arg_command(args, force_file_to_exist: true)
     if paths.empty?
       if options['updated'] || options['all']
         paths << Pathname.new(File.absolute_path(path))
@@ -112,6 +113,7 @@ command :add do |c|
         puts "Nothing specified, nothing added."
       end
     end
+
     stage = stage_commit
     paths.each do |path|
       add(path, base, stage, options)
@@ -125,6 +127,9 @@ command :rm do |c|
   c.desc "Override the up-to-date check."
   c.default_value false
   c.switch [:f, :force], negatable: false
+  c.action do |global_options, options, args|
+    base, paths = arg_command(args)
+  end
 end
 
 desc "Update server local sub index"
@@ -136,9 +141,13 @@ command :status do |c|
     staged = {}
     not_staged = {}
     untracked = {}
+
     paths.each do |path|
       status(path, base, stage, staged, not_staged, untracked)
     end
+
+
+    # TODO refactor
     puts "Files to be committed:"
     if !staged.empty?
       puts ""
@@ -154,6 +163,7 @@ command :status do |c|
       end
       puts ""
     end
+
     puts "Files not staged for commit:"
     if !not_staged.empty?
       puts ""
@@ -169,6 +179,7 @@ command :status do |c|
       end
       puts ""
     end
+
     puts "Untracked files:"
     if !untracked.empty?
       puts ""

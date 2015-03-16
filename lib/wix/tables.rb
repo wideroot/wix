@@ -28,7 +28,6 @@ $db.create_table?  :objects do
   primary_key :id
   foreign_key :commit_id
   String      :path         , null: false   , text: true
-  String      :name         , null: false   , text: true
   Time        :mtime        , null: false
   Time        :ctime        , null: false
   Integer     :size
