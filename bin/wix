@@ -123,14 +123,20 @@ command :add do |c|
   end
 end
 
-desc "Remove entry from the index (not removing the files)"
-arg_name 'path', [:optional, :multiple]
+desc "Remove (and untrack) entry from the index (not removing the files)"
+arg_name 'path', [:multiple]
 command :rm do |c|
-  c.desc "Override the up-to-date check."
+  c.desc "Remove also not tracked entries."
   c.default_value false
   c.switch [:f, :force], negatable: false
+  c.desc "Remove not tracked entries, but notifying."
+  c.default_value false
+  c.switch [:n, :notify], negatable: false
   c.action do |global_options, options, args|
-    base, paths = arg_command(args)
+    help_now! "Too few arguments for command" if args.empty?
+    base, paths = arg_command(args, add_root_if_empty: true)
+    stage = stage_commit
+    rm_files(path, base, stage, options)
   end
 end
 
@@ -172,13 +178,14 @@ command :status do |c|
     if !not_staged.empty?
       puts ""
       not_staged.each do |path, o|
-        action_msg = case o[:action]
+        object = o[:object]
+        action = o[:action]
+        action_msg = case action
             when 'r'; 'deleted: '
             when 'm'; 'modified:'
             else    ; fail "Invalid action `#{action}' for staged file."
             end
-        object = o[:object]
-        if object
+        if action == 'r'
           puts "    #{action_msg} #{path} #{object.id}"
         else
           puts "    #{action_msg} #{path}"

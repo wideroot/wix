@@ -71,6 +71,7 @@ end
 def add_not_staged files, stage
   files.each do |file, o|
     action = o[:action]
+    last_object = o[:last_object]
     object = o[:object]
     case action
     when 'r'
@@ -80,6 +81,7 @@ def add_not_staged files, stage
     else
       fail "Invalid action `#{action}' for staged file."
     end
+    rm_object(last_object)
   end
 end
 
@@ -90,11 +92,13 @@ def add_untracked files, stage
 end
 
 def rm_object(object)
-  object.removed = true
-  object.save
+  if !object.removed
+    object.removed = true
+    object.save
+  end
 end
 
-def add_file(path, stage)
+def add_file(path, stage, removed = false)
   stat = File.stat(path)
   sha2_512 = calculate_sha2_512(path)
   Wix::Object.insert(
@@ -105,7 +109,7 @@ def add_file(path, stage)
     size: stat.size,
     sha2_512: sha2_512,
     added: true,
-    removed: false
+    removed: removed,
   )
 end
 
@@ -116,7 +120,7 @@ def add from, base, stage, options
   is_a_file = status(from, base, stage, staged, not_staged, untracked)
 
   if options['no-all']
-    not_saged.select! { |path, o| o[:action] != 'r' }
+    not_staged.select! { |path, o| o[:action] != 'r' }
   end
   if options['update']
     add_not_staged(not_staged, stage)
@@ -126,19 +130,67 @@ def add from, base, stage, options
   end
 end
 
-def rm path
+def rm_files froms, base, stage, options
+  objects_to_untrack = Set.new
+  objects_to_notify = Set.new
+  fails = Set.new
+  froms.each do |from|
+    staged = Hash.new { |h,k| h[k] = {} }
+    not_staged = {}
+    untracked = {}
+    is_a_file = status(from, base, stage, staged, not_staged, untracked)
+    if staged.empty? && not_staged.empty?
+      fail "`#{from.to_s}' did not match any file"
+    end
+    staged.each do |path, objects|
+      objects_to_delete.add([object[:last_object], nil])
+    end
+    not_staged do |path, o|
+      action = o[:action]
+      object = o[:object]
+      last_object = o[:last_object]
+      if action == 'r'
+        objects_to_delete.add([object, last_object])
+      elsif options['force']
+        objects_to_delete.add([object, last_object])
+      elsif options['notify']
+        objects_to_notify.add(path)
+      else
+        fails << from
+      end
+    end
+  end
+  if !fails.empty?
+    fail "the following file has local modifications:\n #{fails.to_a.join("\n")}\n(use -n to notify the file, or -f to force removal)"
+  end
+  objects_to_notify.each do |path|
+    add_file(path, stage, removed: true)
+  end
+  objects_to_delete.each do |object, last_object|
+    rm_object(object)
+    rm_object(last_object) if last_object
+  end
 end
 
+# \pre:
+#   staged default value is {}
+#   staged_objects[:last_object] is a Wix::Object
+#   staged_objects[:objects] is an array of [Wix::Object]
+# \post:
+#   staged[path][object_id] is
+#     { action: \in 'a', 'r', 'n'}, object: is a Wix::Object}
+#   not_staged[path] = { action: \in {'m', 'r'}, object: is a Wix::Object}
+#   untracked[path] = true
 def status from, base, stage, staged, not_staged, untracked
-  from = from.to_s
-  is_a_file = File.file?(from)
-  path_prefix = is_a_file ? from : from + '/'
+  file = from.to_s
+  is_a_file = File.file?(file)
+  path_prefix = Pathname.new(File.absolute_path(file)).relative_path_from(base).to_s
+  path_prefix += '/' unless is_a_file
   staged_objects = {}
-      #.where("commit_id = ? AND path LIKE (? || '%')", stage.id, path_prefix)
       # TODO this doesn't work... ??
   Wix::Object
       .select(:id, :path, :mtime, :ctime, :size, :added, :removed)
-      .where("commit_id = ?", stage.id)
+      .where("commit_id = ? AND path LIKE (? || '%')", stage.id, path_prefix)
       .order_by(:path, Sequel.desc(:id))
       .all
   .each do |object|
@@ -166,7 +218,7 @@ def status from, base, stage, staged, not_staged, untracked
     object = objects[:last_object]
     if object.mtime != nil
       fail "unseen filed marked as not_staged" if not_staged[path]
-      not_staged[path] = {action: 'r', object: object}
+      not_staged[path] = {action: 'r', object: object, last_object: objects[:objects][-2]}
     end
   end
 
@@ -186,15 +238,6 @@ def status from, base, stage, staged, not_staged, untracked
   is_a_file
 end
 
-# \pre:
-#   staged default value is {}
-#   staged_objects[:last_object] is a Wix::Object
-#   staged_objects[:objects] is an array of [Wix::Object]
-# \post:
-#   staged[path][object_id] is
-#     { action: \in 'a', 'r', 'n'}, object: is a Wix::Object}
-#   not_staged[path] = { action: \in {'m', 'r'}, object: is a Wix::Object or nil depending on action}
-#   untracked[path] = true
 def status_object file, base, staged_objects, staged, not_staged, untracked
   path = Pathname.new(File.absolute_path(file)).relative_path_from(base).to_s
   file_stat = File.stat(file)
@@ -221,10 +264,10 @@ def status_object file, base, staged_objects, staged, not_staged, untracked
       # do nothing then
       new_object = false
     else
-      if object.added
-        # if was added then it's modified
+      if !object.removed
+        # if not was removed then it's modified
         # (it could be that actually it is not since we do not check hashes)
-        not_staged[path] = {action: 'm', object: nil}
+        not_staged[path] = {action: 'm', last_object: object}
       else
         # otherwise it's untracked
         untracked[path] = true
@@ -250,7 +293,7 @@ def status_object file, base, staged_objects, staged, not_staged, untracked
     warn "- not staged (modified)"
     not_staged.each do |path, o|
       warn "    #{path}"
-      warn "      #{o[:action]} #{o[:object] ? o[:object].id : 'nil'}"
+      warn "      #{o[:action]} #{o[:object]}"
     end
     warn "- untracked"
     untracked.each do |path, v|
