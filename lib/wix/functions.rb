@@ -209,7 +209,7 @@ def status from, base, stage, staged, not_staged, untracked
   end
 
   if is_a_file
-    status_file(from, base, staged_objects, staged, not_staged, untracked)
+    status_object(from, base, staged_objects, staged, not_staged, untracked)
   else
     status_dir(from, base, staged_objects, staged, not_staged, untracked)
   end
