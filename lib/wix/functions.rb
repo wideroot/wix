@@ -57,46 +57,109 @@ def init_wix path
 end
 
 
-def add path, options
+def add_not_staged files
+end
+def add_untracked files
+
+end
+def add from, base, stage, options
+  staged = {}
+  not_staged = {}
+  untracked = {}
+  is_a_file = status(from, base, staged_objects, staged, not_staged, untracked)
+
+  if options['no-all']
+    not_saged.select! { |path, action| v != 'r' }
+  end
+  if options['update']
+    add_not_staged(not_staged)
+  elsif options['all']
+    add_not_staged(not_staged)
+    add_untracked(untracked)
+  end
+end
+
+=begin
+
+  if File.file?(path)
+    add_file(file)
+  else
+    # assume dir
+    if options['all']
+      Dir["#{from}/**/*"].select { |path| File.file?(path) }.each do |file|
+        # calculated path
+        add_file(path)
+      end
+    elsif
+      staged_objects = Wix::Object
+          .select(:path)
+          .where("commit_id IN (?, ?) AND path LIKE CONCAT(?, '%')",
+                  stage.id, last_commit.id, from)
+          .order_by(:path).all (ORDER_BY 'path', 'commit' DESC
+      last_path = nil
+      staged_object.each do |object|
+        next if last_path == object.path
+        add_file(path, object)
+        last_path = object.path
+      end
+    end
+  end
+=end
 end
 
 def rm path
 end
 
 def status from, base, stage, staged, not_staged, untracked
-  staged_objects = Wix::Object.select(:path, :mtime, :ctime, :size, :added, :removed)
-      .where(commit_id: stage.id).order_by(:path).all
-
-  Dir["#{from.to_s}/**/*"].select { |path| File.file?(path) }.each do |file|
-    path = Pathname.new(File.absolute_path(file)).relative_path_from(base).to_s
-    file_stat = File.stat(file)
-
-    object = staged_objects.bsearch { |object| object.path >= path }
-    if object && object.path == path
-      if  stat.mtime == object.mtime &&
-          stat.ctime == object.ctime &&
-          stat.size == object.size
-        # tracked (and not modified) or added
-        if object.added
-          staged[path] = 'a'
-        elsif object.removed
-          staged[path] = 'r'
-        end
-      else
-        # modified
-        # (it could be that actually it is not since we do not check hashes)
-        not_staged[path] = 'm'
-      end
-      object.mtime = nil  # we mark this object as seen
-    else
-      # untracked
-      untracked[path] = true
-    end
+  from = from.to_s
+  staged_objects = Wix::Object
+      .select(:path, :mtime, :ctime, :size, :added, :removed)
+      .where("commit_id = ? AND path LIKE CONCAT(?, '%')", stage.id, from)
+      .order_by(:path).all
+  if File.file?(from)
+    status_file(from, base, staged_objects, staged, not_staged, untracked)
+    true
+  else
+    status_dir(from, base, staged_objects, staged, not_staged, untracked)
+    false
   end
+end
 
-  # all non see objects are deleted not staged for commit
+def status_file file, base, staged_objects, staged, not_staged, untracked
+  path = Pathname.new(File.absolute_path(file)).relative_path_from(base).to_s
+  file_stat = File.stat(file)
+  return unless file_stat.file?
+  object = staged_objects.bsearch { |object| object.path >= path }
+  if object && object.path == path
+    # not we could have added a previous version of a file...
+    if object.added
+      staged[path] = 'a'
+    end
+    if  stat.mtime == object.mtime &&
+        stat.ctime == object.ctime &&
+        stat.size == object.size
+      if object.removed
+        staged[path] = 'r'
+      end
+    else
+      # modified
+      # (it could be that actually it is not since we do not check hashes)
+      not_staged[path] = 'm'
+    end
+    object.mtime = nil  # we mark this object as seen
+  else
+    # untracked
+    untracked[path] = true
+  end
+  # all non seen objects are deleted not staged for commit
   staged_objects.select { |object| !object.mtime }.each do |object|
     not_staged[object.path] = 'r'
+  end
+end
+
+def status_dir from, base, staged_objects, staged, not_staged, untracked
+  Dir["#{from}/**/*"].select { |path| File.file?(path) }.each do |file|
+    status_file(file, base, staged_objects, staged, not_staged, untracked)
   end
 end
 
