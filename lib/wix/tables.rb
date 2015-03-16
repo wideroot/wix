@@ -1,6 +1,10 @@
 def init_tables
 
 
+$db.create_table?  :pushes do
+  Integer     :pushed_commit  , null: false , primary: true
+end
+
 $db.create_table?  :configs do
   primary_key :id
   String      :name         , null: false   , text: false
@@ -22,6 +26,7 @@ end
 $db.create_table?  :commits do
   primary_key :id
   foreign_key :config_id
+  Time        :commited_at  , null: true
   String      :message      , null: true    , text: true
 end
 

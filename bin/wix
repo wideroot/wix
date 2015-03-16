@@ -224,8 +224,13 @@ command :commit do |c|
   end
 end
 
-desc "Show the local sub index status"
+desc "Update remote sub local index"
 command :push do |c|
+  c.action do |global_options, options, args|
+    pwd = Dir.pwd
+    init_wix!(pwd)
+    push
+  end
 end
 
 

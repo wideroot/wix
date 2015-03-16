@@ -26,6 +26,37 @@ def init_empty_commit config_id
   warn "init empty commit r#{commit_id}" if $verbose_level > 0
 end
 
+def push
+  next_is_new = pre_last_commit = Wix::Push.last
+  next_commit_id = pre_last_commit ? pre_last_commit.id + 1 : 0
+  # prepare commit
+  commits = Wix::Commit.
+      .select(:id)
+      .where('commit_id >= ?', next_commit_id)
+      .order_by(Sequel.asc(commit_id))
+      .all
+  commits.pop
+  res = []
+  commits.each do |commit|
+    cres = {
+      rid:          commit.rid,
+      message:      commit.message,
+      index_config: commit.config.generate_index_config(
+                        force_new: next_is_new == nil,
+                        force_no_updated: false),
+      commited_at:  updated_at
+    }
+  end
+
+  $db.transaction do
+    post_last_commit = Wix::Push.last
+    if post_last_commit != pre_last_commit
+      raise "Transaction aborted expected last commit to be `#{pre_last_commit}', got `#{post_last_commit}'"
+    end
+    Wix::Push.insert(id: LAST COMMIT IN THE)
+  end
+end
+
 def commit message
   query = <<HDOC
 INSERT INTO objects
@@ -37,9 +68,11 @@ SELECT ?, path, mtime_s, mtime_n, ctime_s, ctime_n, size, sha2_512, 0, 0
 FROM objects
 WHERE commit_id = ? AND removed != 1
 HDOC
+  now = Sequel.datetime_class.now
   $db.transaction do
     commit = Wix::Commit.last
     commit.message = message
+    commit.commited_at = now
     commit.save
     if !Wix::Object.where('commit_id = ? AND (removed == 1 OR added == 1)',
                            commit.id).first
@@ -66,7 +99,7 @@ def create_wix path, options
   FileUtils.rm_f(wix_file)
   connect(wix_file)
   init_tables
-  time = Sequel.datetime_class.now
+  now = Sequel.datetime_class.now
   $db.transaction do
     config_id = Wix::Config.insert(
       name:         options['name'],
@@ -79,8 +112,8 @@ def create_wix path, options
       commit_time:  options['commit-time'],
       message:      options['message'],
       file_time:    options['file-time'],
-      created_at:   time,
-      updated_at:   time,
+      created_at:   now,
+      updated_at:   now,
       removed_at:   nil,
     )
     # insert the commit we will use as staged commit
@@ -276,7 +309,7 @@ def status from, base, stage, staged, not_staged, untracked
   Wix::Object
       .select(:id, :path, :mtime_s, :mtime_n, :ctime_s, :ctime_n, :size, :added, :removed)
       .where("commit_id = ? AND path LIKE (? || '%')", stage.id, path_prefix)
-      .order_by(:path, Sequel.desc(:id))
+      .order_by(Sequel.asc(:path), Sequel.desc(:id))
       .all
   .each do |object|
     if !staged_objects[object.path]

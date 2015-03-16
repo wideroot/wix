@@ -3,11 +3,27 @@ module Wix
 
 class Config < Sequel::Model
   set_primary_key :id
+  def generate_index_config force_new: false, force_no_update: false
+    { name:       name,
+      anon:       anon,
+      hidden:     hidden,
+      filename:   filename,
+      path:       path,
+      push_time:  push_time,
+      commit_time:commit_time,
+      messages:   messages,
+      file_time:  file_time
+      force_new:  force_new
+      force_no_update:  force_no_update
+    }
+  end
 end
 
 class Commit < Sequel::Model
   set_primary_key :id
   many_to_one :config
+  def rid
+  end
 end
 
 class Object < Sequel::Model
