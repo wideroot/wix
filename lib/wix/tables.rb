@@ -13,10 +13,10 @@ $db.create_table?  :configs do
   TrueClass   :hidden       , null: false
   TrueClass   :filename     , null: false
   TrueClass   :path         , null: false
+  TrueClass   :file_time    , null: false
   TrueClass   :push_time    , null: false
   TrueClass   :commit_time  , null: false
   TrueClass   :message      , null: false
-  TrueClass   :file_time    , null: false
   Time        :created_at   , null: false
   Time        :updated_at   , null: false
   Time        :removed_at   , null: true
@@ -25,14 +25,14 @@ end
 # the last commit are stage..
 $db.create_table?  :commits do
   primary_key :id
-  foreign_key :config_id
+  foreign_key :config_id    , :configs      , key: :id
   Time        :commited_at  , null: true
   String      :message      , null: true    , text: true
 end
 
 $db.create_table?  :objects do
   primary_key :id
-  foreign_key :commit_id
+  foreign_key :commit_id    , :commits      , key: :id
   String      :path         , null: false   , text: true
   Integer     :mtime_s      , null: false
   Integer     :mtime_n      , null: false

@@ -5,7 +5,12 @@
 require 'fileutils'
 require 'open3'
 require 'shellwords'
+require 'json'
 require 'logger'
+require 'digest/sha1'
+require 'net/http'
+require 'uri'
+require 'io/console'
 require 'wix'
 
 require 'gli'
@@ -35,24 +40,24 @@ command :init do |c|
   c.desc "The index (and files) will not be associate to the user"
   c.default_value false
   c.switch %i(anon), negatable: true
-  c.desc "Other users will not see this index (they will see the files, but)"
+  c.desc "Other users will not see this index (they will only see the files)"
   c.default_value false
   c.switch %i(hidden), negatable: true
-  c.desc "Publish filenames"
+  c.desc "Upload filenames"
   c.default_value true
   c.switch %i(filename), negatable: true
-  c.desc "Publish paths"
+  c.desc "Upload paths"
   c.default_value true
   c.switch %i(path), negatable: true
-  c.desc "Publish push time"
-  c.default_value true
-  c.switch %i(push-time), negatable: true
-  c.desc "Publish commit time"
+  c.desc "Upload commit times"
   c.default_value true
   c.switch %i(commit-time), negatable: true
-  c.desc "Publish file time (mtime)"
+  c.desc "Upload file times (mtime)"
   c.default_value true
   c.switch %i(file-time), negatable: true
+  c.desc "Show push time to other users"
+  c.default_value true
+  c.switch %i(push-time), negatable: true
   c.desc "Other users will see your commit messages"
   c.default_value true
   c.switch %i(message), negatable: true

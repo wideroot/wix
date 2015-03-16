@@ -28,32 +28,67 @@ end
 
 def push
   next_is_new = pre_last_commit = Wix::Push.last
-  next_commit_id = pre_last_commit ? pre_last_commit.id + 1 : 0
+  next_commit_id = pre_last_commit ? pre_last_commit.pushed_commit + 1 : 0
   # prepare commit
-  commits = Wix::Commit.
-      .select(:id)
-      .where('commit_id >= ?', next_commit_id)
-      .order_by(Sequel.asc(commit_id))
+  commits = Wix::Commit
+      .select
+      .where('id >= ?', next_commit_id)
+      .order_by(Sequel.asc(:id))
       .all
-  commits.pop
-  res = []
+  commits.pop  # the last one is the staged
+  if commits.empty?
+    raise "Everything up-to-date"
+  end
+  last_commited_id = commits.last.id
+  first_config = commits.first.config
+  index_name = first_config.name
+  index_username = first_config.username
+  puts "Pushing sub local index #{index_username}/#{index_name}"
+  print "Enter password: "
+  user_password = $stdin.noecho(&:gets).chomp
+  push_file = []
   commits.each do |commit|
-    cres = {
+    config = commit.config
+    objects = Wix::Object.where(commit_id: commit.id).all.map do |object|
+      path_entries = Pathname.new(object.path).each_filename.to_a
+      fail "Expected `.' got `#{path_entries.first}'" if path_entries.first != '.'
+      path_entries = path_entries[1..-1]
+      { size:       object.size,
+        sha2_512:   object.sha2_512,
+        name:       config.filename ? path_entries.last : nil,
+        path:       config.path ? path_entries : nil,
+        created_at: config.file_time ? object.mtime_s : nil,
+      }
+    end
+    push_file << {
       rid:          commit.rid,
       message:      commit.message,
-      index_config: commit.config.generate_index_config(
+      index_config: config.generate_index_config(
                         force_new: next_is_new == nil,
-                        force_no_updated: false),
-      commited_at:  updated_at
+                        force_no_update: false),
+      commited_at:  config.commit_time ? commit.commited_at : nil,
+      objects:      objects
     }
   end
+
+  # TODO upload files, gziped, and so
+
+  # connect and push...
+  uri = URI("#{API_SERVER_URI}/push/#{index_name}")
+  req = Net::HTTP::Post.new(uri)
+  req.basic_auth index_username, user_password
+  req.sent_form_data(commits: commits.to_json) 
+  res = Net::HTTP.start(uri.hostname, uri.port) do |http|
+    http.request(req)
+  end
+  raise "Got code `#{res.code}'" unless  res.code == 200
 
   $db.transaction do
     post_last_commit = Wix::Push.last
     if post_last_commit != pre_last_commit
       raise "Transaction aborted expected last commit to be `#{pre_last_commit}', got `#{post_last_commit}'"
     end
-    Wix::Push.insert(id: LAST COMMIT IN THE)
+    Wix::Push.insert(id: last_commited_id)
   end
 end
 
