@@ -26,17 +26,40 @@ def init_empty_commit config_id
   warn "init empty commit r#{commit_id}" if $verbose_level > 0
 end
 
+=begin
 def commit message
   commit_id = nil
   added_something = nil
   $db.transaction do
-    commit_id = Wix::Commit.select(:id).last
-    added_something = $db['SELECT 1 FROM objects WHERE commit_id = ? AND (added = 1 OR removed = 1)'].all
+    commit = Wix::Commit.last
+    added_something = $db['SELECT 1 FROM objects WHERE commit_id = ? AND (added = 1 OR removed = 1)', commit.id].all
+    if added_something.empty?
+      raise "nothing added to commit"
+    end
+    commit.message = message
+    commit.save
+    new_commit = Wix::Commit.create
+    sql <<HDOC
+INSERT INTO objects
+  ( commit_id,
+    path,
+    mtime_s,
+    mtime_n,
+    ctime_s,
+    ctime_n,
+    size,
+    sha2_512,
+    added,
+    removed
+  )
+SELECT ?, path, mtime_s, mtime_n, ctime_s, ctime_n, size, sha2_512, 0, 0
+FROM objects
+WHERE commit_id = ? AND removed != 1
+HDOC
+    raise 'noup'
   end
-  puts added_something
-  puts added_something
-  puts added_something
 end
+=end
 
 def connect file
   $db = Sequel.connect("sqlite://#{file}")
@@ -107,14 +130,15 @@ def add_not_staged files, stage
     when 'r'
       warn "add not staged 'r' object #{object}" if $verbose_level > 0
       rm_object(object)
+      rm_object(last_object)
     when 'm'
       warn "add not staged 'm' object #{object}" if $verbose_level > 0
-      add_file(file, stage)
+      fail "Trying to modify path `#{file}' with no last_object" unless last_object
+      add_file(file, stage, last_object: last_object)
     else
       fail "Invalid action `#{action}' for staged file."
     end
     warn "removed last object #{last_object}" if $verbose_level > 0
-    rm_object(last_object)
   end
 end
 
@@ -131,9 +155,22 @@ def rm_object(object)
   end
 end
 
-def add_file(path, stage, removed: false)
+def add_file(path, stage, last_object: nil, removed: false)
   stat = File.stat(path)
   sha2_512 = calculate_sha2_512(path)
+  if last_object
+    warn "insert #{path} and remove object #{last_object}" if $verbose_level > 0
+    $db.transaction do
+      insert_object(path, stage, stat, sha2_512, removed)
+      rm_object(last_object)
+    end
+  else
+    warn "insert #{path}" if $verbose_level > 0
+    insert_object(path, stage, stat, sha2_512, removed)
+  end
+end
+
+def insert_object(path, stage, stat, sha2_512, removed)
   Wix::Object.insert(
     commit_id: stage.id,
     path: path,
