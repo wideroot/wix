@@ -1,4 +1,7 @@
 #!/usr/bin/env ruby
+
+# TODO do not use Pathname
+
 require 'fileutils'
 require 'open3'
 require 'shellwords'
@@ -137,7 +140,7 @@ command :rm do |c|
     help_now! "Too few arguments for command" if args.empty?
     base, paths = arg_command(args, add_root_if_empty: true)
     stage = stage_commit
-    rm_files(path, base, stage, options)
+    rm_paths(paths, base, stage, options)
   end
 end
 
@@ -169,7 +172,7 @@ command :status do |c|
             when 'a'; 'added:   '
             else    ;  fail "Invalid action `#{action}' for staged file."
             end
-          puts "    #{action_msg} #{path} #{o[:object].id}"
+          puts "    #{action_msg} #{path}   ##{o[:object].id}"
         end
       end
       puts ""
@@ -187,7 +190,7 @@ command :status do |c|
             else    ; fail "Invalid action `#{action}' for staged file."
             end
         if action == 'r'
-          puts "    #{action_msg} #{path} #{object.id}"
+          puts "    #{action_msg} #{path}   ##{object.id}"
         else
           puts "    #{action_msg} #{path}"
         end
@@ -241,7 +244,7 @@ command :debug do |c|
         .all
       .each do |object|
         puts object.path if last_path != object.path
-        puts "  #{'r' if object.removed}#{'a' if object.added} - #{object.id}"
+        puts "  #{'r' if object.removed}#{'a' if object.added} ##{object.id}"
         if $verbose_level > 0
           puts "      mtime    #{object.mtime}"
           puts "      ctime    #{object.ctime}"

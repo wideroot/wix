@@ -1,3 +1,11 @@
+def normalize_path_relative_to(file, base)
+  relative = Pathname.new(File.absolute_path(file)).relative_path_from(base).to_s
+  if relative != '.' && !relative.start_with?('./')
+    relative = './' + relative
+  end
+  relative
+end
+
 def calculate_sha2_512 file
   absolute_path = File.absolute_path(file)
   shell_path = Shellwords.escape(absolute_path)
@@ -99,13 +107,13 @@ def add_untracked files, stage
 end
 
 def rm_object(object)
-  if !object.removed
+  if object && !object.removed
     object.removed = true
     object.save
   end
 end
 
-def add_file(path, stage, removed = false)
+def add_file(path, stage, removed: false)
   stat = File.stat(path)
   sha2_512 = calculate_sha2_512(path)
   Wix::Object.insert(
@@ -139,7 +147,7 @@ def add from, base, stage, options
   end
 end
 
-def rm_files froms, base, stage, options
+def rm_paths froms, base, stage, options
   objects_to_untrack = Set.new
   objects_to_notify = Set.new
   fails = Set.new
@@ -151,31 +159,54 @@ def rm_files froms, base, stage, options
     if staged.empty? && not_staged.empty?
       fail "`#{from.to_s}' did not match any file"
     end
+
+    # add staged that matched iif its action is added
     staged.each do |path, objects|
-      objects_to_delete.add([object[:last_object], nil])
+      added_objects = 0
+      objects.each do |object_id, o|
+        action = o[:action]
+        object = o[:object]
+        if action == 'a'
+          objects_to_untrack.add([object, nil])
+          added_objects += 1
+        end
+      end
+      if added_objects > 1
+        fail "More than one(#{added_objects}) added object for `#{path}'"
+      end
     end
-    not_staged do |path, o|
+
+    not_staged.each do |path, o|
       action = o[:action]
       object = o[:object]
       last_object = o[:last_object]
       if action == 'r'
-        objects_to_delete.add([object, last_object])
+        # add not removed staged to commit
+        objects_to_untrack.add([object, last_object])
       elsif options['force']
-        objects_to_delete.add([object, last_object])
+        # remove a new file if force
+        objects_to_untrack.add([object, last_object])
       elsif options['notify']
+        # notify a new file if force
         objects_to_notify.add(path)
       else
+        # we cannot delete a file that has not been added
         fails << from
       end
     end
   end
+
   if !fails.empty?
     fail "the following file has local modifications:\n #{fails.to_a.join("\n")}\n(use -n to notify the file, or -f to force removal)"
+  end
+  if $verbose_level > 0
+    warn objects_to_notify.inspect
+    warn objects_to_untrack.inspect
   end
   objects_to_notify.each do |path|
     add_file(path, stage, removed: true)
   end
-  objects_to_delete.each do |object, last_object|
+  objects_to_untrack.each do |object, last_object|
     rm_object(object)
     rm_object(last_object) if last_object
   end
@@ -193,7 +224,7 @@ end
 def status from, base, stage, staged, not_staged, untracked
   file = from.to_s
   is_a_file = File.file?(file)
-  path_prefix = Pathname.new(File.absolute_path(file)).relative_path_from(base).to_s
+  path_prefix = normalize_path_relative_to(file, base)
   path_prefix += '/' unless is_a_file
   staged_objects = {}
       # TODO this doesn't work... ??
@@ -214,7 +245,7 @@ def status from, base, stage, staged, not_staged, untracked
     warn ""
     warn "[[ =============="
     warn ""
-    warn staged_objects  # TODO warn
+    warn "staged objects: #{staged_objects}"  # TODO warn
   end
 
   seen = Set.new
@@ -249,7 +280,7 @@ def status from, base, stage, staged, not_staged, untracked
 end
 
 def status_object file, base, staged_objects, staged, not_staged, untracked, seen
-  path = Pathname.new(File.absolute_path(file)).relative_path_from(base).to_s
+  path = normalize_path_relative_to(file, base)
   file_stat = File.stat(file)
   return unless file_stat.file?
   objects = staged_objects[path]
@@ -267,10 +298,10 @@ def status_object file, base, staged_objects, staged, not_staged, untracked, see
     end
     # we could have add/rm a previous version of file
     object = objects[:last_object]
-    if  file_stat.mtime.to_sec  == object.mtime_s &&
-        file_stat.mtime.to_nsec == object.mtime_n &&
-        file_stat.ctime.to_sec  == object.ctime_s &&
-        file_stat.ctime.to_nsec == object.ctime_n &&
+    if  file_stat.mtime.tv_sec  == object.mtime_s &&
+        file_stat.mtime.tv_nsec == object.mtime_n &&
+        file_stat.ctime.tv_sec  == object.ctime_s &&
+        file_stat.ctime.tv_nsec == object.ctime_n &&
         file_stat.size == object.size
       # path is not a new object
       # do nothing then
