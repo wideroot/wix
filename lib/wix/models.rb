@@ -12,6 +12,9 @@ end
 
 class Object < Sequel::Model
   set_primary_key :id
+  def unique_id_in_commit
+    "#{sha2_512} #{size} #{mtime} #{ctime} #{path}"
+  end
 end
 
 
