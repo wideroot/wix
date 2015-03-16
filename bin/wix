@@ -216,6 +216,11 @@ command :commit do |c|
   c.desc "Use the given <msg> as the commit message."
   c.default_value nil
   c.flag [:m, :message]
+  c.action do |global_options, options, args|
+    pwd = Dir.pwd
+    init_wix!(pwd)
+    commit(options['message'])
+  end
 end
 
 desc "Show the local sub index status"

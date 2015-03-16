@@ -22,17 +22,40 @@ def set_wix_root path
 end
 
 def init_empty_commit config_id
-  commit_id = $db[:commits].insert(config_id: config_id)
+  commit_id = Wix::Commit.insert(config_id: config_id)
   warn "init empty commit r#{commit_id}" if $verbose_level > 0
 end
+
+def commit message
+  commit_id = nil
+  added_something = nil
+  $db.transaction do
+    commit_id = Wix::Commit.select(:id).last
+    added_something = $db['SELECT 1 FROM objects WHERE commit_id = ? AND (added = 1 OR removed = 1)'].all
+  end
+  puts added_something
+  puts added_something
+  puts added_something
+end
+
+def connect file
+  $db = Sequel.connect("sqlite://#{file}")
+  if $verbose_level > 0
+    $db.logger = Logger.new($stderr)
+    $db.sql_log_level = :debug
+  end
+  require_relative './models.rb'
+  $db
+end
+
 def create_wix path, options
   wix_file = File.join(path, WIX_FILENAME)
   FileUtils.rm_f(wix_file)
-  $db = Sequel.connect("sqlite://#{wix_file}")
+  connect(wix_file)
   init_tables
   time = Sequel.datetime_class.now
   $db.transaction do
-    config_id = $db[:configs].insert(
+    config_id = Wix::Config.insert(
       name:         options['name'],
       username:     options['user'],
       anon:         options['anon'],
@@ -64,12 +87,7 @@ def init_wix path
   Pathname.new(path).ascend do |path|
     wix_file = File.join(path, WIX_FILENAME)
     next unless File.file?(wix_file)
-    $db = Sequel.connect("sqlite://#{wix_file}")
-    if $verbose_level > 0
-      $db.logger = Logger.new($stderr)
-      $db.sql_log_level = :debug
-    end
-    require_relative './models.rb'
+    connect(wix_file)
     set_wix_root(path)
     if !$db.table_exists?(:configs)
       fail "Invalid db `#{wix_file}': configs table does not exist"

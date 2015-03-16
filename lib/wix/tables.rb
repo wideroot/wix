@@ -22,6 +22,7 @@ end
 $db.create_table?  :commits do
   primary_key :id
   foreign_key :config_id
+  String      :message      , null: true    , text: true
 end
 
 $db.create_table?  :objects do
