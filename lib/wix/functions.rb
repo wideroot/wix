@@ -26,40 +26,30 @@ def init_empty_commit config_id
   warn "init empty commit r#{commit_id}" if $verbose_level > 0
 end
 
-=begin
 def commit message
-  commit_id = nil
-  added_something = nil
-  $db.transaction do
-    commit = Wix::Commit.last
-    added_something = $db['SELECT 1 FROM objects WHERE commit_id = ? AND (added = 1 OR removed = 1)', commit.id].all
-    if added_something.empty?
-      raise "nothing added to commit"
-    end
-    commit.message = message
-    commit.save
-    new_commit = Wix::Commit.create
-    sql <<HDOC
+  query = <<HDOC
 INSERT INTO objects
-  ( commit_id,
-    path,
-    mtime_s,
-    mtime_n,
-    ctime_s,
-    ctime_n,
-    size,
-    sha2_512,
-    added,
-    removed
+  ( commit_id
+  , path, mtime_s, mtime_n, ctime_s, ctime_n, size, sha2_512
+  , added, removed
   )
 SELECT ?, path, mtime_s, mtime_n, ctime_s, ctime_n, size, sha2_512, 0, 0
 FROM objects
 WHERE commit_id = ? AND removed != 1
 HDOC
-    raise 'noup'
+  $db.transaction do
+    commit = Wix::Commit.last
+    commit.message = message
+    commit.save
+    if !Wix::Object.where('commit_id = ? AND (removed == 1 OR added == 1)',
+                           commit.id).first
+      raise "nothing added to commit"
+    end
+    new_commit_id = Wix::Commit.insert
+    raise "new commit id is 0" if new_commit_id == 0
+    $db[query, new_commit_id, commit.id].insert
   end
 end
-=end
 
 def connect file
   $db = Sequel.connect("sqlite://#{file}")
@@ -342,14 +332,17 @@ def status_object file, base, staged_objects, staged, not_staged, untracked, see
   new_object = true
   if objects
     objects[:objects].each do |staged_object|
-      action = ''
+      action = nil
       if staged_object.added
         action = 'a'
       end
       if staged_object.removed
-        action = action == '' ? 'r' : 'n'
+        action = action ? 'n' : 'r'
       end
-      staged[path][staged_object.id] = {action: action, object: staged_object}
+      if action
+        # do not add non modified staged fileds
+        staged[path][staged_object.id] = {action: action, object: staged_object}
+      end
     end
     # we could have add/rm a previous version of file
     object = objects[:last_object]

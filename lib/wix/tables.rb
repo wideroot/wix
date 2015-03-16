@@ -37,6 +37,9 @@ $db.create_table?  :objects do
   String      :sha2_512     , null: false   , text: false , fixed: true , size: 128
   TrueClass   :added        , null: false
   TrueClass   :removed      , null: false
+  # \invariant:
+  # for each path, commit_id there's one or none row with removed == false
+  # (and if exists id > id of the other rows with the same path, commit_id)
 end
 
 

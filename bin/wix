@@ -165,14 +165,15 @@ command :status do |c|
       puts ""
       staged.each do |path, objects|
         objects.each do |object_id, o|
-          actions = o[:action]
-          action_msg = case o[:action]
+          object = o[:object]
+          action = o[:action]
+          action_msg = case action
             when 'n'; 'notify:  '
             when 'r'; 'deleted: '
             when 'a'; 'added:   '
             else    ;  fail "Invalid action `#{action}' for staged file."
             end
-          puts "    #{action_msg} #{path}   ##{o[:object].id}"
+          puts "    #{action_msg} #{path}   ##{object.id}"
         end
       end
       puts ""
