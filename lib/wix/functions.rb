@@ -29,7 +29,7 @@ end
 def push
   next_is_new = pre_last_commit = Wix::Push.last
   next_commit_id = pre_last_commit ? pre_last_commit.pushed_commit + 1 : 0
-  # prepare commit
+  # prepare commit list
   commits = Wix::Commit
       .select
       .where('id >= ?', next_commit_id)
@@ -71,17 +71,15 @@ def push
     }
   end
 
-  # TODO upload files, gziped, and so
-
   # connect and push...
   uri = URI("#{API_SERVER_URI}/push/#{index_name}")
   req = Net::HTTP::Post.new(uri)
   req.basic_auth index_username, user_password
-  req.sent_form_data(commits: commits.to_json) 
+  req.set_form_data(commits: commits.to_json) 
   res = Net::HTTP.start(uri.hostname, uri.port) do |http|
     http.request(req)
   end
-  raise "Got code `#{res.code}'" unless  res.code == 200
+  raise "Got code `#{res.code}'" unless  res.code != 200
 
   $db.transaction do
     post_last_commit = Wix::Push.last
@@ -90,6 +88,7 @@ def push
     end
     Wix::Push.insert(id: last_commited_id)
   end
+  puts "Pushing sub local index #{index_username}/#{index_name}"
 end
 
 def commit message
