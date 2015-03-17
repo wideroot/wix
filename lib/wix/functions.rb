@@ -89,14 +89,14 @@ def push
         sha2_512:   object.sha2_512,
         name:       config.filename ? path_entries.last : nil,
         path:       config.path ? path_entries : nil,
-        created_at: config.file_time ? Time.at(object.mtime_s).utc.sec : nil,
+        created_at: config.file_time ? Time.at(object.mtime_s).utc.tv_sec : nil,
         removed:    object.removed,
       }
     end
     push_file << {
       rid:          commit.rid,
       message:      commit.message,
-      commited_at:  config.commit_time ? commit.commited_at.sec : nil,
+      commited_at:  config.commit_time ? commit.commited_at.tv_sec : nil,
       index_config: index_config,
       objects:      objects,
     }
