@@ -58,9 +58,29 @@ def push
   puts first_config.inspect
 
   # prepare push_file
+  last_config_id = nil
+  config = nil
   push_file = []
   commits.each do |commit|
-    config = commit.config
+    index_config = nil
+    if last_config_id != commit.config_id
+      puts '- old'
+      puts last_config_id
+      puts config
+      puts '- commit'
+      puts commit.inspect
+      puts '- new'
+      puts commit.config_id
+      puts commit.config.inspect
+      puts ''
+      puts ''
+      puts ''
+      config = commit.config
+      last_config_id = config.id
+      index_config = config.generate_index_config(
+          force_new: next_is_new, force_no_update: false)
+    end
+
     objects = Wix::Object.where(commit_id: commit.id).all.map do |object|
       path_entries = Pathname.new(object.path).each_filename.to_a
       fail "Expected `.' got `#{path_entries.first}'" if path_entries.first != '.'
@@ -77,9 +97,7 @@ def push
       rid:          commit.rid,
       message:      commit.message,
       commited_at:  config.commit_time ? commit.commited_at.sec : nil,
-      index_config: config.generate_index_config(
-                        force_new: next_is_new,
-                        force_no_update: false),
+      index_config: index_config,
       objects:      objects,
     }
     next_is_new = false
@@ -132,7 +150,8 @@ HDOC
                            commit.id).first
       raise "nothing added to commit"
     end
-    new_commit_id = Wix::Commit.insert
+    last_config = Wix::Config.select(:id).last
+    new_commit_id = Wix::Commit.insert(config_id: last_config.id)
     raise "new commit id is 0" if new_commit_id == 0
     $db[query, new_commit_id, commit.id].insert
   end
