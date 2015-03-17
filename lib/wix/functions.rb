@@ -54,8 +54,6 @@ def push
   puts "Pushing sub local index #{index_username}/#{index_name} ..."
   print "Enter password: "
   user_password = $stdin.noecho(&:gets).chomp
-  puts first_config
-  puts first_config.inspect
 
   # prepare push_file
   last_config_id = nil
@@ -64,17 +62,6 @@ def push
   commits.each do |commit|
     index_config = nil
     if last_config_id != commit.config_id
-      puts '- old'
-      puts last_config_id
-      puts config
-      puts '- commit'
-      puts commit.inspect
-      puts '- new'
-      puts commit.config_id
-      puts commit.config.inspect
-      puts ''
-      puts ''
-      puts ''
       config = commit.config
       last_config_id = config.id
       index_config = config.generate_index_config(
