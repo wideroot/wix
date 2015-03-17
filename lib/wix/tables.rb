@@ -2,7 +2,7 @@ def init_tables
 
 
 $db.create_table?  :pushes do
-  Integer     :pushed_commit  , null: false , primary: true
+  Integer     :pushed_commit_id  , null: false , primary: true
 end
 
 $db.create_table?  :configs do

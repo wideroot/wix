@@ -2,14 +2,13 @@ module Wix
 
 
 class Push < Sequel::Model
-  set_primary_key :pushed_commit
+  set_primary_key :pushed_commit_id
 end
 
 class Config < Sequel::Model
   set_primary_key :id
   def generate_index_config force_new: false, force_no_update: false
-    { name:       name,
-      anon:       anon,
+    { anon:       anon,
       hidden:     hidden,
       filename:   filename,
       path:       path,

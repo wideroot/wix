@@ -27,9 +27,15 @@ def init_empty_commit config_id
 end
 
 def push
-  next_is_new = pre_last_commit = Wix::Push.last
-  next_commit_id = pre_last_commit ? pre_last_commit.pushed_commit + 1 : 0
-  # prepare commit list
+  # get the commits we need to push
+  pre_last_commit = Wix::Push.last
+  if pre_last_commit
+    next_commit_id =  pre_last_commit.pushed_commit_id + 1
+    next_is_new = false
+  else
+    next_commit_id = 0
+    next_is_new = true
+  end
   commits = Wix::Commit
       .select
       .where('id >= ?', next_commit_id)
@@ -39,13 +45,19 @@ def push
   if commits.empty?
     raise "Everything up-to-date"
   end
+
+  # retrieve info we need to connect to the server
   last_commited_id = commits.last.id
   first_config = commits.first.config
   index_name = first_config.name
   index_username = first_config.username
-  puts "Pushing sub local index #{index_username}/#{index_name}"
+  puts "Pushing sub local index #{index_username}/#{index_name} ..."
   print "Enter password: "
   user_password = $stdin.noecho(&:gets).chomp
+  puts first_config
+  puts first_config.inspect
+
+  # prepare push_file
   push_file = []
   commits.each do |commit|
     config = commit.config
@@ -57,39 +69,47 @@ def push
         sha2_512:   object.sha2_512,
         name:       config.filename ? path_entries.last : nil,
         path:       config.path ? path_entries : nil,
-        created_at: config.file_time ? object.mtime_s : nil,
+        created_at: config.file_time ? Time.at(object.mtime_s).utc.sec : nil,
+        removed:    object.removed,
       }
     end
     push_file << {
       rid:          commit.rid,
       message:      commit.message,
+      commited_at:  config.commit_time ? commit.commited_at.sec : nil,
       index_config: config.generate_index_config(
-                        force_new: next_is_new == nil,
+                        force_new: next_is_new,
                         force_no_update: false),
-      commited_at:  config.commit_time ? commit.commited_at : nil,
-      objects:      objects
+      objects:      objects,
     }
+    next_is_new = false
   end
-
-  # connect and push...
-  uri = URI("#{API_SERVER_URI}/push/#{index_name}")
-  req = Net::HTTP::Post.new(uri)
-  req.basic_auth index_username, user_password
-  req.set_form_data(commits: commits.to_json) 
-  res = Net::HTTP.start(uri.hostname, uri.port) do |http|
-    http.request(req)
-  end
-  raise "Got code `#{res.code}'" unless  res.code != 200
 
   $db.transaction do
+    # check nothing has been pushed
     post_last_commit = Wix::Push.last
     if post_last_commit != pre_last_commit
       raise "Transaction aborted expected last commit to be `#{pre_last_commit}', got `#{post_last_commit}'"
     end
-    Wix::Push.insert(id: last_commited_id)
+
+    # connect and push...
+    uri = URI("#{API_SERVER_URI}/push/#{index_name}")
+    req = Net::HTTP::Post.new(uri)
+    req.basic_auth index_username, user_password
+    req.set_form_data(push_file: push_file.to_json) 
+    res = Net::HTTP.start(uri.hostname, uri.port) do |http|
+      http.request(req)
+    end
+    if res.code != '200'
+      raise "Not expected server response. Got code `#{res.code}': #{res}"
+    end
+
+    # mark the commits pushed as pushed
+    Wix::Push.insert(pushed_commit_id: last_commited_id)
   end
-  puts "Pushing sub local index #{index_username}/#{index_name}"
+  puts "Pushed sub local index #{index_username}/#{index_name}"
 end
+
 
 def commit message
   query = <<HDOC
@@ -102,7 +122,7 @@ SELECT ?, path, mtime_s, mtime_n, ctime_s, ctime_n, size, sha2_512, 0, 0
 FROM objects
 WHERE commit_id = ? AND removed != 1
 HDOC
-  now = Sequel.datetime_class.now
+  now = Time.now.utc
   $db.transaction do
     commit = Wix::Commit.last
     commit.message = message
@@ -133,7 +153,7 @@ def create_wix path, options
   FileUtils.rm_f(wix_file)
   connect(wix_file)
   init_tables
-  now = Sequel.datetime_class.now
+  now = Time.now.utc
   $db.transaction do
     config_id = Wix::Config.insert(
       name:         options['name'],
