@@ -77,7 +77,7 @@ def push
         name:       config.filename ? path_entries.last : nil,
         path:       config.path ? path_entries : nil,
         created_at: config.file_time ? Time.at(object.mtime_s).utc.tv_sec : nil,
-        removed:    object.removed,
+        removed:    config.notification ? true : object.removed,
       }
     end
     push_file << {
@@ -172,6 +172,7 @@ def create_wix path, options
       commit_time:  options['commit-time'],
       message:      options['message'],
       file_time:    options['file-time'],
+      notification: options['notification'],
       created_at:   now,
       updated_at:   now,
       removed_at:   nil,

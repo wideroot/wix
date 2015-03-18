@@ -17,6 +17,7 @@ $db.create_table?  :configs do
   TrueClass   :push_time    , null: false
   TrueClass   :commit_time  , null: false
   TrueClass   :message      , null: false
+  TrueClass   :notification , null: false
   Time        :created_at   , null: false
   Time        :updated_at   , null: false
   Time        :removed_at   , null: true

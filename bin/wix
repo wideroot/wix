@@ -61,6 +61,9 @@ command :init do |c|
   c.desc "Other users will see your commit messages"
   c.default_value true
   c.switch %i(message), negatable: true
+  c.desc "Force all files to be just notified (i.e. marking all files as removed)."
+  c.default_value false
+  c.switch %i(notification), negatable: false
 
   c.action do |global_options, options, args|
     pwd = Dir.pwd
