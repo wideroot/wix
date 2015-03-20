@@ -69,11 +69,11 @@ def push
     end
 
     objects = Wix::Object.where(commit_id: commit.id).all.map do |object|
-      fail "Expected `.' got `#{path_entries.first}'" if path_entries.first != '.'
-      path_entries = path_entries[1..-1]
+      # TODO normalize assert...
+      fail "Expected `.' got `#{object.path}'" if object.path[0] != '.'
       { size:       object.size,
         sha2_512:   object.sha2_512,
-        filename:   config.filename ? path_entries.last : nil,
+        filename:   config.filename ? File.basename(object.path) : nil,
         resource_identifier: config.resource_identifier ? object.path : nil,
         created_at: config.file_time ? Time.at(object.mtime_s).utc.tv_sec : nil,
         removed:    config.notification ? true : object.removed,
@@ -97,7 +97,7 @@ def push
     end
 
     # connect and push...
-    uri = URI("#{API_SERVER_URI}/push/#{index_name}")
+    uri = URI("#{$api_server_uri}/push/#{index_name}")
     req = Net::HTTP::Post.new(uri)
     req.basic_auth index_username, user_password
     req.set_form_data(push_file: push_file.to_json) 
@@ -162,12 +162,12 @@ def create_wix path, options
   $db.transaction do
     config_id = Wix::Config.insert(
       name:         options['name'],
-      display_name:         options['display_name'],
+      display_name: options['display-name'],
       username:     options['user'],
       anon:         options['anon'],
       hidden:       options['hidden'],
       filename:     options['filename'],
-      resource_identifier:         options['resource_identifier'],
+      resource_identifier:         options['resource-identifier'],
       push_time:    options['push-time'],
       commit_time:  options['commit-time'],
       message:      options['message'],

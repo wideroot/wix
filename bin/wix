@@ -31,14 +31,16 @@ switch [:v, :verbose], :negatable => false
 
 desc "Create a empty local sub index"
 command :init do |c|
+  # TODO each option should have the no-upload and no-show
+  # (in no-upload the client uploads nil for such fields...)
   c.desc "Private name of the index"
-  c.flag [:name]
+  c.flag %i(name)
   c.default_value nil
   c.desc "Public name of the index"
-  c.flag [:display_name]
+  c.flag %i(display-name)
   c.default_value nil
   c.desc "User"
-  c.flag [:user]
+  c.flag %i(user)
   c.default_value nil
   c.desc "The index (and files) will not be associate to the user"
   c.default_value false
@@ -51,7 +53,7 @@ command :init do |c|
   c.switch %i(filename), negatable: true
   c.desc "Upload resource identifiers"
   c.default_value true
-  c.switch %i(resource_identifier), negatable: true
+  c.switch %i(resource-identifier), negatable: true
   c.desc "Upload commit times"
   c.default_value true
   c.switch %i(commit-time), negatable: true
@@ -75,7 +77,7 @@ command :init do |c|
     end
     fail "User cannot be none." if options['user'] == nil
     fail "Name cannot be none." if options['name'] == nil
-    fail "Display name cannot be none." if options['display_name'] == nil
+    fail "Display name cannot be none." if options['display-name'] == nil
     create_wix(pwd, options)
     puts "Created sub local index at `#{$wix_root}'."
   end
@@ -238,7 +240,18 @@ end
 
 desc "Update remote sub local index"
 command :push do |c|
+  c.desc "Server host"
+  c.default_value "localhost"
+  c.flag %i(h host)
+  c.desc "Server port"
+  c.default_value '9292'
+  c.flag %i(p port)
+  c.desc "Server protocol"
+  c.default_value 'http'
+  c.flag %i(P protocol)
+  # TODO improve if
   c.action do |global_options, options, args|
+    $api_server_uri = "http://#{options['host']}:#{options['port']}/api"
     pwd = Dir.pwd
     init_wix!(pwd)
     push
@@ -246,38 +259,51 @@ command :push do |c|
 end
 
 
-desc "Show the local sub index status"
+desc "Show the local sub index status at the given commits"
 arg_name 'commits', [:optional, :multiple]
 command :debug do |c|
+  c.desc "Show all commits"
+  c.default_value false
+  c.switch %i(A, all), negatable: false
   c.action do |global_options, options, args|
     pwd = Dir.pwd
     init_wix!(pwd)
-    commits = if args.empty?
-      Wix::Commit.all
-    else
-      Wix::Commit.where(id: args).all
-    end
-    commits.each do |commit|
-      puts "# r#{commit.id}"
-      puts ""
-      last_path = nil
-      objects = Wix::Object
-        .where(commit_id: commit.id)
-        .order_by(:path, Sequel.desc(:id))
-        .all
-      .each do |object|
-        puts object.path if last_path != object.path
-        puts "  #{'r' if object.removed}#{'a' if object.added} ##{object.id}"
-        if $verbose_level > 0
-          puts "      mtime    #{object.mtime}"
-          puts "      ctime    #{object.ctime}"
-          puts "      size     #{object.size}"
-          puts "      sha2_512 #{object.sha2_512}"
-        end
-        last_path = object.path
+    if args.empty? && !options['all']
+      # list commits
+      Wix::Commit.all.each do |commit|
+        commit.commited_at = 'staged' unless commit.commited_at
+        puts "#{commit.commited_at} r#{commit.id}: #{commit.message}"
       end
-      puts ""
-      puts ""
+    else
+      commits = if args.empty?
+        Wix::Commit.all
+      else
+        args = args.map { |c| c[0] == 'r' ? c[1..-1] : c }
+        Wix::Commit.where(id: args).all
+      end
+      commits.each do |commit|
+        puts "#{commit.commited_at} r#{commit.id}"
+        puts "#{commit.message}"
+        puts ""
+        last_path = nil
+        objects = Wix::Object
+          .where(commit_id: commit.id)
+          .order_by(:path, Sequel.desc(:id))
+          .all
+        .each do |object|
+          puts object.path if last_path != object.path
+          puts "  #{'r' if object.removed}#{'a' if object.added} ##{object.id}"
+          if $verbose_level > 0
+            puts "      mtime    #{object.mtime}"
+            puts "      ctime    #{object.ctime}"
+            puts "      size     #{object.size}"
+            puts "      sha2_512 #{object.sha2_512}"
+          end
+          last_path = object.path
+        end
+        puts ""
+        puts ""
+      end
     end
   end
 end
