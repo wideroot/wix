@@ -205,41 +205,48 @@ def init_wix path
 end
 
 
-def add_not_staged files, stage
+def add_not_staged_files files, stage
   files.each do |file, o|
-    action = o[:action]
-    last_object = o[:last_object]
-    object = o[:object]
-    case action
-    when 'r'
-      warn "add not staged 'r' object #{object}" if $verbose_level > 0
-      rm_object(object)
-      rm_object(last_object)
-    when 'm'
-      warn "add not staged 'm' object #{object}" if $verbose_level > 0
-      fail "Trying to modify path `#{file}' with no last_object" unless last_object
-      add_file(file, stage, last_object: last_object)
-    else
-      fail "Invalid action `#{action}' for staged file."
-    end
-    warn "removed last object #{last_object}" if $verbose_level > 0
+    add_not_staged_file(file, o, stage)
   end
 end
 
-def add_untracked files, stage
-  files.each do |file, o|
-    add_file(file, stage)
+def add_not_staged_file file, o, stage
+  action = o[:action]
+  last_object = o[:last_object]
+  object = o[:object]
+  case action
+  when 'r'
+    warn "add not staged 'r' object #{object}" if $verbose_level > 0
+    rm_object(object)
+    rm_object(last_object)
+  when 'm'
+    warn "add not staged 'm' object #{object}" if $verbose_level > 0
+    fail "Trying to modify path `#{file}' with no last_object" unless last_object
+    add_file(file, stage, last_object: last_object)
+  else
+    fail "Invalid action `#{action}' for staged file."
   end
+end
+
+def add_untracked_files files, stage
+  files.each do |file, o|
+    add_untracked_file(file, stage)
+  end
+end
+def add_untracked_file file, stage
+  add_file(file, stage)
 end
 
 def rm_object(object)
+  # TODO return sha2_512...?
   if object && !object.removed
     object.removed = true
     object.save
   end
 end
 
-def add_file(path, stage, last_object: nil, removed: false)
+def add_file path, stage, last_object: nil, removed: false
   stat = File.stat(path)
   sha2_512 = calculate_sha2_512(path)
   if last_object
@@ -252,6 +259,7 @@ def add_file(path, stage, last_object: nil, removed: false)
     warn "insert #{path}" if $verbose_level > 0
     insert_object(path, stage, stat, sha2_512, removed)
   end
+  sha2_512
 end
 
 def insert_object(path, stage, stat, sha2_512, removed)
@@ -273,16 +281,16 @@ def add from, base, stage, options
   staged = Hash.new { |h,k| h[k] = {} }
   not_staged = {}
   untracked = {}
-  is_a_file = status(from, base, stage, staged, not_staged, untracked)
+  is_a_file, _ = status(from, base, stage, staged, not_staged, untracked)
 
   if options['no-all']
     not_staged.select! { |path, o| o[:action] != 'r' }
   end
   if options['update']
-    add_not_staged(not_staged, stage)
+    add_not_staged_files(not_staged, stage)
   elsif options['all']
-    add_not_staged(not_staged, stage)
-    add_untracked(untracked, stage)
+    add_not_staged_files(not_staged, stage)
+    add_untracked_files(untracked, stage)
   end
 end
 
@@ -294,7 +302,7 @@ def rm_paths froms, base, stage, options
     staged = Hash.new { |h,k| h[k] = {} }
     not_staged = {}
     untracked = {}
-    is_a_file = status(from, base, stage, staged, not_staged, untracked)
+    is_a_file, _ = status(from, base, stage, staged, not_staged, untracked)
     if staged.empty? && not_staged.empty?
       fail "`#{from.to_s}' did not match any file"
     end
@@ -351,11 +359,14 @@ def rm_paths froms, base, stage, options
   end
 end
 
+# TODO why from is called from...?
+# from  pathanme of the <pathspec> (that right can only be a regular path)
+# base  pathname of the path of the .wix file
+# TODO do a status from, staged, not_staged, untracked
+# TODO do a status from returning a [staged, not_staged, untracked]
+# stage a valid commit (usually the last, or staged commit)
 # \pre:
 #   staged default value is {}
-#   staged_objects[:last_object] is a Wix::Object
-#   staged_objects[:objects] is an array of [Wix::Object]
-# \post:
 #   staged[path][object_id] is
 #     { action: \in 'a', 'r', 'n'}, object: is a Wix::Object}
 #   not_staged[path] = { action: \in {'m', 'r'}, object: is a Wix::Object}
@@ -368,7 +379,6 @@ def status from, base, stage, staged, not_staged, untracked
   staged_objects = {}
       # TODO this doesn't work... ??
   Wix::Object
-      .select(:id, :path, :mtime_s, :mtime_n, :ctime_s, :ctime_n, :size, :added, :removed)
       .where("commit_id = ? AND path LIKE (? || '%')", stage.id, path_prefix)
       .order_by(Sequel.asc(:path), Sequel.desc(:id))
       .all
@@ -415,9 +425,12 @@ def status from, base, stage, staged, not_staged, untracked
     warn ""
   end
 
-  is_a_file
+  [is_a_file, staged_objects]
 end
 
+# \pre
+#   staged_objects[:last_object] is a Wix::Object
+#   staged_objects[:objects] is an array of [Wix::Object]
 def status_object file, base, staged_objects, staged, not_staged, untracked, seen
   path = normalize_path_relative_to(file, base)
   file_stat = File.stat(file)

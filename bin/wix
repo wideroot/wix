@@ -1,6 +1,7 @@
 #!/usr/bin/env ruby
 
 # TODO do not use Pathname
+# TODO this need a complete refactor
 
 require 'fileutils'
 require 'open3'
@@ -308,6 +309,63 @@ command :debug do |c|
   end
 end
 
+desc "Print sha512 checksum."
+arg_name 'file', [:multiple]
+command :sha512sum do |c|
+  c.desc "Do not add the file to the index"
+  c.default_value false
+  c.switch %i(s, silent), negatable: false
+  c.action do |global_options, options, args|
+    args.each do |path|
+      if !File.file?(path)
+        warn "#{path}: is a directory"
+        next
+      end
+      if init_wix(File.dirname(path))
+        staged = Hash.new { |h,k| h[k] = {} }
+        not_staged = {}
+        untracked = {}
+        from = Pathname.new(path)
+        base = Pathname.new($wix_root)
+        stage = stage_commit
+        is_a_file, staged_objects = status(from, base, stage, staged, not_staged, untracked)
+        require 'pp'
+        pp "staged objects #{staged_objects}"
+        pp "staged #{staged}"
+        pp "not staged #{not_staged}"
+        pp "untracked #{untracked}"
+        if !is_a_file
+          warn "#{path}: is a directory"
+          next
+        end
+        sha2_512 = if !untracked.empty?
+          if !options['silent']
+            warn "untracked"
+            file, _ = untracked.first
+            add_untracked_file(file, stage)
+          end
+        elsif !not_staged.empty?
+          if !options['silent']
+            warn "not staged"
+            file, o = not_staged.first
+            fail "not staged that exists but action is not m. #{file}: #{o}" if o[:action] != 'm'
+            add_not_staged_file(file, o, stage)
+          end
+        elsif !staged_objects.empty?
+          warn "staged object"
+          _, o = staged_objects.first
+          puts o.inspect
+          o[:last_object].sha2_512
+        end
+      end
+      if !sha2_512
+        warn "calculate"
+        sha2_512 = calculate_sha2_512(file)
+      end
+      puts "#{sha2_512}  #{file}"
+    end
+  end
+end
 # TODO
 # rm-notifications  idem than rm, but removing notification of all files
 # rm-objects        remove objects id
