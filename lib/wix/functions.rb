@@ -69,13 +69,12 @@ def push
     end
 
     objects = Wix::Object.where(commit_id: commit.id).all.map do |object|
-      path_entries = Pathname.new(object.path).each_filename.to_a
       fail "Expected `.' got `#{path_entries.first}'" if path_entries.first != '.'
       path_entries = path_entries[1..-1]
       { size:       object.size,
         sha2_512:   object.sha2_512,
-        name:       config.filename ? path_entries.last : nil,
-        path:       config.path ? path_entries : nil,
+        filename:   config.filename ? path_entries.last : nil,
+        resource_identifier: config.resource_identifier ? object.path : nil,
         created_at: config.file_time ? Time.at(object.mtime_s).utc.tv_sec : nil,
         removed:    config.notification ? true : object.removed,
       }
@@ -163,11 +162,12 @@ def create_wix path, options
   $db.transaction do
     config_id = Wix::Config.insert(
       name:         options['name'],
+      display_name:         options['display_name'],
       username:     options['user'],
       anon:         options['anon'],
       hidden:       options['hidden'],
       filename:     options['filename'],
-      path:         options['path'],
+      resource_identifier:         options['resource_identifier'],
       push_time:    options['push-time'],
       commit_time:  options['commit-time'],
       message:      options['message'],

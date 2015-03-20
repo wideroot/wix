@@ -11,7 +11,7 @@ class Config < Sequel::Model
     { anon:       anon,
       hidden:     hidden,
       filename:   filename,
-      path:       path,
+      resource_identifier:       resource_identifier,
       push_time:  push_time,
       commit_time:commit_time,
       message:    message,
@@ -25,16 +25,13 @@ end
 class Commit < Sequel::Model
   set_primary_key :id
   many_to_one :config
-  def rid
+  def rid  # TODO this should be the sha of the commit json object...
     Digest::SHA1.hexdigest("#{id} #{commited_at}")
   end
 end
 
 class Object < Sequel::Model
   set_primary_key :id
-  def unique_id_in_commit
-    "#{sha2_512} #{size} #{mtime} #{ctime} #{path}"
-  end
   def mtime
     Time.at(mtime_s)
   end

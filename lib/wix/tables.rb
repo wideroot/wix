@@ -8,11 +8,12 @@ end
 $db.create_table?  :configs do
   primary_key :id
   String      :name         , null: false   , text: false
+  String      :display_name , null: false   , text: false
   String      :username     , null: false   , text: false
   TrueClass   :anon         , null: false
   TrueClass   :hidden       , null: false
   TrueClass   :filename     , null: false
-  TrueClass   :path         , null: false
+  TrueClass   :resource_identifier , null: false
   TrueClass   :file_time    , null: false
   TrueClass   :push_time    , null: false
   TrueClass   :commit_time  , null: false

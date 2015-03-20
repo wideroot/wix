@@ -31,8 +31,11 @@ switch [:v, :verbose], :negatable => false
 
 desc "Create a empty local sub index"
 command :init do |c|
-  c.desc "Name of the index"
+  c.desc "Private name of the index"
   c.flag [:name]
+  c.default_value nil
+  c.desc "Public name of the index"
+  c.flag [:display_name]
   c.default_value nil
   c.desc "User"
   c.flag [:user]
@@ -46,9 +49,9 @@ command :init do |c|
   c.desc "Upload filenames"
   c.default_value true
   c.switch %i(filename), negatable: true
-  c.desc "Upload paths"
+  c.desc "Upload resource identifiers"
   c.default_value true
-  c.switch %i(path), negatable: true
+  c.switch %i(resource_identifier), negatable: true
   c.desc "Upload commit times"
   c.default_value true
   c.switch %i(commit-time), negatable: true
@@ -72,6 +75,7 @@ command :init do |c|
     end
     fail "User cannot be none." if options['user'] == nil
     fail "Name cannot be none." if options['name'] == nil
+    fail "Display name cannot be none." if options['display_name'] == nil
     create_wix(pwd, options)
     puts "Created sub local index at `#{$wix_root}'."
   end
